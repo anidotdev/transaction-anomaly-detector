@@ -1,2 +1,21 @@
+[project]
+name = "transaction-anomaly-detector"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]",
+    "sqlalchemy",
+    "pydantic",
+]
+
+[project.optional-dependencies]
+worker = [
+    "joblib>=1.6.0",
+    "lightgbm>=4.7.0",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "scikit-learn>=1.9.1",
+]
+
 [tool.fastapi]
-entrypoint = "main:app"
+entrypoint = "app.main:app"
