@@ -23,7 +23,7 @@ def save_prediction(
 
         existing = db.get(Prediction, transaction_id)
 
-        # Avoid creating duplicate predictions
+        # To avoid creating duplicate predictions
         if existing is None:
             prediction = Prediction(
                 transaction_id=transaction_id,

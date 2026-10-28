@@ -8,7 +8,23 @@ from sqlalchemy.orm import Session
 from shared.database import get_db
 from shared.models import Prediction, TransactionRecord
 
+import json
+import os
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
 app = FastAPI()
+
+kinesis = boto3.client(
+    "kinesis",
+    region_name=os.getenv("AWS_REGION", "us-east-1"),
+)
+
+KINESIS_STREAM_NAME = os.getenv(
+    "KINESIS_STREAM_NAME",
+    "paysim-transactions",
+)
 
 
 # feature schema
@@ -77,6 +93,25 @@ def receive_paysim_transaction(
     except Exception:
         db.rollback()
         raise
+
+    event = {
+        "transaction_id": transaction_id,
+        "transaction": transaction.model_dump(),
+    }
+
+    try:
+        kinesis.put_record(
+            StreamName=KINESIS_STREAM_NAME,
+            Data=json.dumps(event),
+            PartitionKey=transaction_id,
+        )
+    except (BotoCoreError, ClientError):
+        db_transaction.status = "pending"
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Transaction stored but publishing to Kinesis failed",
+        )
 
     return {
         "message": "Transaction stored",
