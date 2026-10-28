@@ -8,59 +8,58 @@ import boto3
 from worker.model import load_model
 from worker.predictor import process_transaction
 
-
-STREAM_NAME = os.environ.get(
-    "KINESIS_STREAM_NAME",
-    "paysim-transactions",
-)
-AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+REGION = os.getenv("AWS_REGION", "us-east-1")
+STREAM_NAME = os.getenv("KINESIS_STREAM_NAME", "paysim-transactions")
 
 
 def main():
-    kinesis = boto3.client("kinesis", region_name=AWS_REGION)
+    kinesis = boto3.client("kinesis", region_name=REGION)
     model = load_model()
 
-    response = kinesis.describe_stream(StreamName=STREAM_NAME)
-    shards = response["StreamDescription"]["Shards"]
+    stream = kinesis.describe_stream(StreamName=STREAM_NAME)
+    shards = stream["StreamDescription"]["Shards"]
 
-    if len(shards) != 1:
-        raise RuntimeError(
-            "This initial consumer supports one shard. "
-            "Multi-shard support will be added later."
+    if not shards:
+        raise RuntimeError(f"No shards found in stream {STREAM_NAME}")
+
+    iterators = {}
+
+    for shard in shards:
+        shard_id = shard["ShardId"]
+        response = kinesis.get_shard_iterator(
+            StreamName=STREAM_NAME,
+            ShardId=shard_id,
+            ShardIteratorType="TRIM_HORIZON",
         )
+        iterators[shard_id] = response["ShardIterator"]
 
-    shard_id = shards[0]["ShardId"]
+    print(f"Worker started. Consuming {len(iterators)} shard(s).")
 
-    iterator_response = kinesis.get_shard_iterator(
-        StreamName=STREAM_NAME,
-        ShardId=shard_id,
-        ShardIteratorType="TRIM_HORIZON",
-    )
-    iterator = iterator_response["ShardIterator"]
-
-    print(f"Consuming stream: {STREAM_NAME}")
-
-    while iterator:
-        response = kinesis.get_records(
-            ShardIterator=iterator,
-            Limit=100,
-        )
-
-        for record in response["Records"]:
-            event = json.loads(record["Data"].decode("utf-8"))
-
-            transaction_id = event["transaction_id"]
-            transaction = event["transaction"]
-
-            result = process_transaction(
-                model=model,
-                transaction_id=transaction_id,
-                transaction=transaction,
+    while iterators:
+        for shard_id in list(iterators):
+            response = kinesis.get_records(
+                ShardIterator=iterators[shard_id],
+                Limit=100,
             )
 
-            print(json.dumps(result))
+            for record in response["Records"]:
+                try:
+                    event = json.loads(record["Data"].decode("utf-8"))
+                    result = process_transaction(
+                        model,
+                        event["transaction_id"],
+                        event["transaction"],
+                    )
+                    print(json.dumps(result))
+                except Exception as exc:
+                    print(f"Failed to process record from {shard_id}: {exc}")
 
-        iterator = response.get("NextShardIterator")
+            next_iterator = response.get("NextShardIterator")
+            if next_iterator:
+                iterators[shard_id] = next_iterator
+            else:
+                del iterators[shard_id]
+
         time.sleep(1)
 
 
