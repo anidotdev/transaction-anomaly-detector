@@ -19,7 +19,7 @@ resource "aws_security_group" "api" {
     from_port   = 8000
     to_port     = 8000
     protocol    = "tcp"
-    cidr_blocks = ["106.219.229.227/32"]
+    cidr_blocks = ["160.202.37.158/32"]
   }
 
   tags = {

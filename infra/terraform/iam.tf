@@ -89,3 +89,21 @@ resource "aws_iam_role_policy_attachment" "api_ssm" {
   role       = aws_iam_role.api.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
+
+resource "aws_iam_role_policy" "api_read_database_secret" {
+  name = "transaction-anomaly-api-read-db-secret"
+  role = aws_iam_role.api.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_db_instance.paysim.master_user_secret[0].secret_arn
+      }
+    ]
+  })
+}

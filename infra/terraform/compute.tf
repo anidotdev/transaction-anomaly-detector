@@ -32,3 +32,23 @@ resource "aws_instance" "api" {
     Environment = "development"
   }
 }
+
+
+resource "aws_instance" "worker" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = "t3.small"
+  iam_instance_profile   = aws_iam_instance_profile.worker.name
+  vpc_security_group_ids = [aws_security_group.worker.id]
+
+  user_data = <<-EOF
+    #!/bin/bash
+    dnf update -y
+    dnf install -y python3.12 python3.12-pip git
+  EOF
+
+  tags = {
+    Name        = "transaction-anomaly-worker"
+    Project     = "transaction-anomaly-detector"
+    Environment = "development"
+  }
+}
